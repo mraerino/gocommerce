@@ -74,6 +74,7 @@ func AutoMigrate(db *gorm.DB) error {
 		Event{},
 		Instance{},
 		InvoiceNumber{},
+		Task{},
 	)
 	return db.Error
 }

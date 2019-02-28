@@ -45,6 +45,7 @@ func multi(cmd *cobra.Command, args []string) {
 	logrus.Infof("GoCommerce API started on: %s", l)
 
 	models.RunHooks(bgDB, logrus.WithField("component", "hooks"))
+	models.RunTasks(bgDB, logrus.WithField("component", "tasks"), nil)
 
 	api.ListenAndServe(l)
 }

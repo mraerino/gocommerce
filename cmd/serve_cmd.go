@@ -42,6 +42,7 @@ func serve(globalConfig *conf.GlobalConfiguration, config *conf.Configuration) {
 	logrus.Infof("GoCommerce API started on: %s", l)
 
 	models.RunHooks(bgDB, logrus.WithField("component", "hooks"))
+	models.RunTasks(bgDB, logrus.WithField("component", "tasks"), config)
 
 	api.ListenAndServe(l)
 }

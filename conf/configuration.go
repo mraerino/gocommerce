@@ -80,6 +80,8 @@ type Configuration struct {
 	Downloads struct {
 		Provider     string `json:"provider"`
 		NetlifyToken string `json:"netlify_token" split_words:"true"`
+
+		RefreshInterval uint64 `json:"refresh_interval" split_words:"true"`
 	} `json:"downloads"`
 
 	Coupons struct {

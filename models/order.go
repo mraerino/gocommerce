@@ -318,3 +318,75 @@ func (m downloadRefreshItemSet) Update(db *gorm.DB, config *conf.Configuration, 
 
 	return
 }
+
+type downloadRefreshExecutor struct {
+	Config *conf.Configuration
+}
+type downloadRefreshState struct {
+	Cursor time.Time `json:"cursor"`
+}
+
+const refreshDatasetLimit = 10
+
+func (e *downloadRefreshExecutor) Enabled() bool {
+	return e.Config.Downloads.RefreshInterval > 0
+}
+
+func (e *downloadRefreshExecutor) Execute(db *gorm.DB, log *logrus.Entry, stateJSON []byte) (interval time.Duration, state interface{}, err error) {
+	s := downloadRefreshState{}
+	if jsonErr := json.Unmarshal(stateJSON, &s); jsonErr != nil {
+		s = downloadRefreshState{}
+	}
+	if s.Cursor.IsZero() {
+		s.Cursor = time.Now()
+	}
+
+	interval = time.Minute
+	state = &s
+
+	log.WithField("cursor", s.Cursor).Debug("Checking for updated downloads")
+
+	query := db.
+		Order("created_at DESC").
+		Where("created_at < ?", s.Cursor).
+		Limit(refreshDatasetLimit)
+
+	orders := []Order{}
+	if queryErr := query.Find(&orders).Error; queryErr != nil && !gorm.IsRecordNotFoundError(queryErr) {
+		err = errors.Wrap(queryErr, "Fetching orders failed")
+		return
+	}
+
+	if len(orders) == 0 {
+		// reached the end of the table, start with most recent orders
+		s.Cursor = time.Now()
+		return
+	}
+
+	// setting the cursor early, so if it fails updating, don't hang on broken records
+	s.Cursor = orders[len(orders)-1].CreatedAt
+
+	updateMap := downloadRefreshItemSet{}
+	for _, order := range orders {
+		for _, item := range order.LineItems {
+			updateMap.Add(item, &order)
+		}
+	}
+	updatedOrders, updateErr := updateMap.Update(db, e.Config, log)
+	if updateErr != nil {
+		err = errors.Wrap(updateErr, "Failed updating downloads for orders")
+		return
+	}
+
+	for _, order := range updatedOrders {
+		if dbErr := db.Save(order).Error; dbErr != nil {
+			log.WithError(dbErr).
+				Warningf("Saving order %s failed", order.ID)
+		}
+	}
+
+	// @todo: set interval based on entry count in orders
+
+	log.Debugf("Updated %d orders", len(updatedOrders))
+	return
+}
